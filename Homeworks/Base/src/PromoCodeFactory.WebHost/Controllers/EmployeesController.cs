@@ -70,5 +70,42 @@ namespace PromoCodeFactory.WebHost.Controllers
 
             return employeeModel;
         }
+
+        [HttpPost]
+        async public Task<IActionResult> Create(
+            [FromQuery] string firstName,
+            [FromQuery] string lastName,
+            [FromQuery] string email)
+        {
+            Employee employee = new Employee
+            {
+                Id = Guid.NewGuid(),
+                FirstName = firstName,
+                LastName = lastName,
+                Email = email,
+                Roles = new List<Role>(),
+                AppliedPromocodesCount = 0
+            };
+            Guid? res = await _employeeRepository.AddAsync(employee);
+            return res.HasValue ? Ok(res) : NotFound();
+        }
+
+
+        [HttpPut("employee:Employee")]
+        async public Task<IActionResult> Update([FromBody] Employee employee)
+        {
+            if (employee.Roles == null)
+                employee.Roles = new List<Role>();
+            bool res = await _employeeRepository.UpdateAsync(employee);
+            return res ? Ok() : NotFound();
+        }
+
+        [HttpDelete("{id:Guid}")]
+        async public Task<IActionResult> Delete(Guid id)
+        {
+            bool res = await _employeeRepository.DeleteAsync(id);
+            return res ? Ok() : NotFound();
+        }
+
     }
 }
