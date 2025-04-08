@@ -1,12 +1,22 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+//using Castle.Core.Configuration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using PromoCodeFactory.Core.Abstractions.Repositories;
 using PromoCodeFactory.Core.Domain.Administration;
-using PromoCodeFactory.Core.Domain.PromoCodeManagement;
+using PromoCodeFactory.DataAccess;
 using PromoCodeFactory.DataAccess.Data;
 using PromoCodeFactory.DataAccess.Repositories;
+using IConfiguration = Microsoft.Extensions.Configuration.IConfiguration;
+
 
 namespace PromoCodeFactory.WebHost
 {
@@ -17,15 +27,18 @@ namespace PromoCodeFactory.WebHost
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers();
-            services.AddScoped(typeof(IRepository<Employee>), (x) =>
-                new InMemoryRepository<Employee>(FakeDataFactory.Employees));
-            services.AddScoped(typeof(IRepository<Role>), (x) =>
-                new InMemoryRepository<Role>(FakeDataFactory.Roles));
-            services.AddScoped(typeof(IRepository<Preference>), (x) =>
-                new InMemoryRepository<Preference>(FakeDataFactory.Preferences));
-            services.AddScoped(typeof(IRepository<Customer>), (x) =>
-                new InMemoryRepository<Customer>(FakeDataFactory.Customers));
+            // Не совсем ясно, что даёт добавление сервиса как пары "интерфейс-реализация" ...
+            services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
+            // ... и что теряется, если так не делать. TODO: надо будет глянуть...
+            services.AddScoped(typeof(DbInitializer));
 
+
+            services.AddDbContext<DataContext>(options =>
+            {
+                options.UseSqlite("Filename=../PromoCodeFactory.DataAccess/Promocode.db");
+                // Необходимо, что бы создавались свойства-сущности. При этом свойства обязательно должны быть virtual, а сущности иметь заявленный PK.
+                options.UseLazyLoadingProxies();
+            });
             services.AddOpenApiDocument(options =>
             {
                 options.Title = "PromoCode Factory API Doc";
@@ -34,7 +47,7 @@ namespace PromoCodeFactory.WebHost
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, DbInitializer dbInitializer)
         {
             if (env.IsDevelopment())
             {
@@ -59,6 +72,10 @@ namespace PromoCodeFactory.WebHost
             {
                 endpoints.MapControllers();
             });
+
+            // Пункт 3 ДЗ: Чистим и заполняем заново БД.
+            // Отключено в рамках выполнения пункта 8 ДЗ.
+            //dbInitializer.InitializeDb();
         }
     }
 }
