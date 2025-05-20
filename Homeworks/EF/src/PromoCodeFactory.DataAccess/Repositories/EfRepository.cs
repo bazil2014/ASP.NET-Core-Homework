@@ -27,9 +27,6 @@ namespace PromoCodeFactory.DataAccess.Repositories
         public async Task<T> GetByIdAsync(Guid id)
         {
             var entity = await _dataContext.Set<T>().FirstOrDefaultAsync(x => x.Id == id);
-
-            //var xxx = await _dataContext.Set<T>().ToListAsync();
-            //var entity = xxx.FirstOrDefault(q => q.Id == id);
             return entity;
         }
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PromoCodeFactory.Core.Abstractions.Repositories;
 using PromoCodeFactory.Core.Domain.PromoCodeManagement;
@@ -25,32 +26,19 @@ namespace PromoCodeFactory.WebHost.Controllers
         }
 
         [HttpGet]
+        [ProducesResponseType<List<PartnerResponse>>(StatusCodes.Status200OK)]
         public async Task<ActionResult<List<PartnerResponse>>> GetPartnersAsync()
         {
             var partners = await _partnersRepository.GetAllAsync();
 
-            var response = partners.Select(x => new PartnerResponse()
-            {
-                Id = x.Id,
-                Name = x.Name,
-                NumberIssuedPromoCodes = x.NumberIssuedPromoCodes,
-                IsActive = true,
-                PartnerLimits = x.PartnerLimits
-                    .Select(y => new PartnerPromoCodeLimitResponse()
-                    {
-                        Id = y.Id,
-                        PartnerId = y.PartnerId,
-                        Limit = y.Limit,
-                        CreateDate = y.CreateDate.ToString("dd.MM.yyyy hh:mm:ss"),
-                        EndDate = y.EndDate.ToString("dd.MM.yyyy hh:mm:ss"),
-                        CancelDate = y.CancelDate?.ToString("dd.MM.yyyy hh:mm:ss"),
-                    }).ToList()
-            });
+            var response = partners.Select(x => new PartnerResponse(x));
 
             return Ok(response);
         }
         
         [HttpGet("{id}/limits/{limitId}")]
+        [ProducesResponseType<PartnerPromoCodeLimit>(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PartnerPromoCodeLimit>> GetPartnerLimitAsync(Guid id, Guid limitId)
         {
             var partner = await _partnersRepository.GetByIdAsync(id);
@@ -61,20 +49,15 @@ namespace PromoCodeFactory.WebHost.Controllers
             var limit = partner.PartnerLimits
                 .FirstOrDefault(x => x.Id == limitId);
 
-            var response = new PartnerPromoCodeLimitResponse()
-            {
-                Id = limit.Id,
-                PartnerId = limit.PartnerId,
-                Limit = limit.Limit,
-                CreateDate = limit.CreateDate.ToString("dd.MM.yyyy hh:mm:ss"),
-                EndDate = limit.EndDate.ToString("dd.MM.yyyy hh:mm:ss"),
-                CancelDate = limit.CancelDate?.ToString("dd.MM.yyyy hh:mm:ss"),
-            };
+            var response = new PartnerPromoCodeLimitResponse(limit);
             
             return Ok(response);
         }
         
         [HttpPost("{id}/limits")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> SetPartnerPromoCodeLimitAsync(Guid id, SetPartnerPromoCodeLimitRequest request)
         {
             var partner = await _partnersRepository.GetByIdAsync(id);
@@ -85,7 +68,7 @@ namespace PromoCodeFactory.WebHost.Controllers
             //Если партнер заблокирован, то нужно выдать исключение
             if (!partner.IsActive)
                 return BadRequest("Данный партнер не активен");
-            
+
             //Установка лимита партнеру
             var activeLimit = partner.PartnerLimits.FirstOrDefault(x => 
                 !x.CancelDate.HasValue);
@@ -101,15 +84,23 @@ namespace PromoCodeFactory.WebHost.Controllers
                 activeLimit.CancelDate = DateTime.Now;
             }
 
+            // Добавка: если описание лимита промокода отсуствует, то нужно выдать исключение
+            if (request == null)
+                return BadRequest("Нет описания лимита промокода");
+
             if (request.Limit <= 0)
                 return BadRequest("Лимит должен быть больше 0");
-            
+
+            DateTime createDate = DateTime.Now;
+            if (request.EndDate <= createDate)
+                return BadRequest("Промокод не должен быть просрочен");
+
             var newLimit = new PartnerPromoCodeLimit()
             {
                 Limit = request.Limit,
                 Partner = partner,
                 PartnerId = partner.Id,
-                CreateDate = DateTime.Now,
+                CreateDate = createDate,
                 EndDate = request.EndDate
             };
             
@@ -121,6 +112,9 @@ namespace PromoCodeFactory.WebHost.Controllers
         }
         
         [HttpPost("{id}/canceledLimits")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CancelPartnerPromoCodeLimitAsync(Guid id)
         {
             var partner = await _partnersRepository.GetByIdAsync(id);
